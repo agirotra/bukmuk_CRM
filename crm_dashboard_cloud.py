@@ -431,21 +431,45 @@ def display_dashboard_tab(leads_df, user_id):
     # Follow-up alerts
     st.subheader("🔔 Follow-up Alerts")
     
-    # Get leads needing follow-up (simplified for demo)
+    # Get leads needing follow-up (with proper error handling)
     if 'follow_up_date' in leads_df.columns:
-        today = datetime.now().date()
-        follow_up_leads = leads_df[
-            (leads_df['follow_up_date'].notna()) & 
-            (pd.to_datetime(leads_df['follow_up_date']).dt.date <= today)
-        ]
-        
-        if not follow_up_leads.empty:
-            st.warning(f"⚠️ {len(follow_up_leads)} leads need follow-up today")
-            st.dataframe(follow_up_leads[['full_name', 'phone_number', 'lead_status', 'follow_up_date']], use_container_width=True)
-        else:
-            st.success("✅ No leads need follow-up today")
+        try:
+            # Clean and convert follow_up_date column
+            follow_up_dates = leads_df['follow_up_date'].copy()
+            
+            # Convert to datetime, handling errors
+            follow_up_dates = pd.to_datetime(follow_up_dates, errors='coerce')
+            
+            # Filter out invalid dates and get today's date
+            valid_dates = follow_up_dates.notna()
+            today = pd.Timestamp.now().normalize()
+            
+            if valid_dates.any():
+                # Find leads needing follow-up
+                follow_up_needed = (follow_up_dates <= today) & valid_dates
+                follow_up_leads = leads_df[follow_up_needed]
+                
+                if not follow_up_leads.empty:
+                    st.warning(f"⚠️ {len(follow_up_leads)} leads need follow-up today")
+                    
+                    # Show relevant columns safely
+                    display_columns = ['full_name', 'phone_number', 'lead_status']
+                    available_columns = [col for col in display_columns if col in follow_up_leads.columns]
+                    
+                    if available_columns:
+                        st.dataframe(follow_up_leads[available_columns], use_container_width=True)
+                    else:
+                        st.write("Follow-up leads found but no displayable columns available")
+                else:
+                    st.success("✅ No leads need follow-up today")
+            else:
+                st.info("ℹ️ No valid follow-up dates found in your data")
+                
+        except Exception as e:
+            st.warning(f"⚠️ Follow-up tracking unavailable: {str(e)}")
+            st.info("ℹ️ This feature will work once you have follow-up dates in your data")
     else:
-        st.info("ℹ️ Follow-up tracking not available")
+        st.info("ℹ️ Follow-up tracking not available - column 'follow_up_date' not found")
 
 def display_leads_management_tab(leads_df, user_id):
     """Display leads management interface"""
@@ -571,14 +595,51 @@ def display_analytics_tab(leads_df, user_id):
                 fig = px.bar(priority_data, x='Priority', y='Count')
                 st.plotly_chart(fig, use_container_width=True)
     
-    # Time-based analysis
+    # Time-based analysis (with safe date handling)
     st.subheader("⏰ Time-based Analysis")
-    if 'created_at' in leads_df.columns:
-        leads_df['created_date'] = pd.to_datetime(leads_df['created_at']).dt.date
-        daily_leads = leads_df.groupby('created_date').size().reset_index(name='count')
-        
-        fig = px.line(daily_leads, x='created_date', y='count', title="Daily Lead Creation")
-        st.plotly_chart(fig, use_container_width=True)
+    
+    # Check for various possible date columns
+    date_columns = ['created_at', 'created_date', 'lead_date', 'date']
+    found_date_column = None
+    
+    for col in date_columns:
+        if col in leads_df.columns:
+            found_date_column = col
+            break
+    
+    if found_date_column:
+        try:
+            # Safely convert dates
+            date_series = pd.to_datetime(leads_df[found_date_column], errors='coerce')
+            valid_dates = date_series.notna()
+            
+            if valid_dates.any():
+                # Create daily leads count
+                daily_leads = date_series[valid_dates].dt.date.value_counts().sort_index()
+                daily_leads_df = pd.DataFrame({
+                    'date': daily_leads.index,
+                    'count': daily_leads.values
+                })
+                
+                # Create the chart
+                fig = px.line(daily_leads_df, x='date', y='count', 
+                            title=f"Daily Lead Creation ({found_date_column})")
+                st.plotly_chart(fig, use_container_width=True)
+                
+                # Show summary stats
+                st.write(f"**Date Range**: {daily_leads_df['date'].min()} to {daily_leads_df['date'].max()}")
+                st.write(f"**Total Days with Leads**: {len(daily_leads_df)}")
+                st.write(f"**Average Leads per Day**: {daily_leads_df['count'].mean():.1f}")
+            else:
+                st.info(f"ℹ️ No valid dates found in '{found_date_column}' column")
+                
+        except Exception as e:
+            st.warning(f"⚠️ Time analysis unavailable: {str(e)}")
+    else:
+        st.info("ℹ️ No date columns found for time-based analysis")
+        st.write("**Available columns for analysis:**")
+        for col in leads_df.columns:
+            st.write(f"• {col}")
 
 def display_ai_insights_tab(leads_df):
     """Display AI insights and recommendations"""
