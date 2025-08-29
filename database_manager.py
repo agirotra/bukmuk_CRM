@@ -97,32 +97,86 @@ class DatabaseManager:
         """Save leads data to database"""
         try:
             with sqlite3.connect(self.db_path) as conn:
-                # Clear existing leads for this user
                 cursor = conn.cursor()
-                cursor.execute("DELETE FROM leads WHERE user_id = ?", (user_id,))
                 
-                # Insert new leads data
-                for _, row in leads_df.iterrows():
-                    cursor.execute('''
-                        INSERT INTO leads (
-                            user_id, full_name, phone_number, email, city, 
-                            lead_status, priority, lead_score, assigned_to, 
-                            source_sheet, lead_date, notes
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    ''', (
-                        user_id,
-                        row.get('full_name'),
-                        row.get('phone_number'),
-                        row.get('email'),
-                        row.get('city'),
-                        row.get('lead_status', 'New Lead'),
-                        row.get('priority', 'Medium'),
-                        row.get('lead_score', 0.0),
-                        row.get('assigned_to'),
-                        row.get('source_sheet'),
-                        row.get('lead_date'),
-                        row.get('notes')
-                    ))
+                # Check if we're updating existing leads or creating new ones
+                if 'id' in leads_df.columns and leads_df['id'].notna().any():
+                    # Update existing leads
+                    logger.info(f"Updating {len(leads_df)} existing leads for user {user_id}")
+                    
+                    for _, row in leads_df.iterrows():
+                        if pd.notna(row.get('id')):
+                            # Update existing lead
+                            cursor.execute('''
+                                UPDATE leads 
+                                SET full_name = ?, phone_number = ?, email = ?, city = ?,
+                                    lead_status = ?, priority = ?, lead_score = ?, assigned_to = ?,
+                                    source_sheet = ?, lead_date = ?, notes = ?, updated_at = CURRENT_TIMESTAMP
+                                WHERE id = ? AND user_id = ?
+                            ''', (
+                                row.get('full_name'),
+                                row.get('phone_number'),
+                                row.get('email'),
+                                row.get('city'),
+                                row.get('lead_status', 'New Lead'),
+                                row.get('priority', 'Medium'),
+                                row.get('lead_score', 0.0),
+                                row.get('assigned_to'),
+                                row.get('source_sheet'),
+                                row.get('lead_date'),
+                                row.get('notes'),
+                                int(row['id']),
+                                user_id
+                            ))
+                        else:
+                            # Insert new lead
+                            cursor.execute('''
+                                INSERT INTO leads (
+                                    user_id, full_name, phone_number, email, city, 
+                                    lead_status, priority, lead_score, assigned_to, 
+                                    source_sheet, lead_date, notes
+                                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                            ''', (
+                                user_id,
+                                row.get('full_name'),
+                                row.get('phone_number'),
+                                row.get('email'),
+                                row.get('city'),
+                                row.get('lead_status', 'New Lead'),
+                                row.get('priority', 'Medium'),
+                                row.get('lead_score', 0.0),
+                                row.get('assigned_to'),
+                                row.get('source_sheet'),
+                                row.get('lead_date'),
+                                row.get('notes')
+                            ))
+                else:
+                    # Clear existing leads and insert new ones
+                    logger.info(f"Replacing all leads for user {user_id} with {len(leads_df)} new leads")
+                    cursor.execute("DELETE FROM leads WHERE user_id = ?", (user_id,))
+                    
+                    # Insert new leads data
+                    for _, row in leads_df.iterrows():
+                        cursor.execute('''
+                            INSERT INTO leads (
+                                user_id, full_name, phone_number, email, city, 
+                                lead_status, priority, lead_score, assigned_to, 
+                                source_sheet, lead_date, notes
+                            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ''', (
+                            user_id,
+                            row.get('full_name'),
+                            row.get('phone_number'),
+                            row.get('email'),
+                            row.get('city'),
+                            row.get('lead_status', 'New Lead'),
+                            row.get('priority', 'Medium'),
+                            row.get('lead_score', 0.0),
+                            row.get('assigned_to'),
+                            row.get('source_sheet'),
+                            row.get('lead_date'),
+                            row.get('notes')
+                        ))
                 
                 conn.commit()
                 logger.info(f"Saved {len(leads_df)} leads for user {user_id}")

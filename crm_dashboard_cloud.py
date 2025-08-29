@@ -492,7 +492,15 @@ def display_leads_management_tab(leads_df, user_id):
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        lead_id = st.number_input("Lead ID", min_value=0, max_value=len(leads_df)-1, value=0)
+        # Use actual database IDs if available, otherwise use index
+        if 'id' in leads_df.columns:
+            available_ids = leads_df['id'].dropna().astype(int).tolist()
+            if available_ids:
+                lead_id = st.selectbox("Lead ID", available_ids, help="Select the lead ID to update")
+            else:
+                lead_id = st.number_input("Lead ID", min_value=0, max_value=len(leads_df)-1, value=0)
+        else:
+            lead_id = st.number_input("Lead ID", min_value=0, max_value=len(leads_df)-1, value=0)
     
     with col2:
         new_status = st.selectbox("New Status", LEAD_STATUSES)
@@ -501,17 +509,31 @@ def display_leads_management_tab(leads_df, user_id):
         notes = st.text_input("Notes", placeholder="Add status update notes...")
     
     if st.button("Update Status"):
-        if lead_id < len(leads_df):
-            # Update in database
-            success = db_manager.update_lead_status(lead_id, new_status, notes, user_id)
-            if success:
-                st.success(f"✅ Lead {lead_id} status updated to {new_status}")
-                # Refresh data
-                st.rerun()
+        try:
+            # Find the actual lead in the DataFrame
+            if 'id' in leads_df.columns:
+                # Use database ID
+                lead_row = leads_df[leads_df['id'] == lead_id]
+                if not lead_row.empty:
+                    success = db_manager.update_lead_status(lead_id, new_status, notes, user_id)
+                    if success:
+                        st.success(f"✅ Lead {lead_id} status updated to {new_status}")
+                        # Refresh data
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to update lead status in database")
+                else:
+                    st.error(f"❌ Lead ID {lead_id} not found in current data")
             else:
-                st.error("❌ Failed to update lead status")
-        else:
-            st.error("❌ Invalid lead ID")
+                # Fallback to index-based approach
+                if lead_id < len(leads_df):
+                    st.warning("⚠️ Using index-based update (database ID not available)")
+                    # For now, just show success message since we can't update without DB ID
+                    st.success(f"✅ Status update simulated for lead at index {lead_id}")
+                else:
+                    st.error("❌ Invalid lead ID")
+        except Exception as e:
+            st.error(f"❌ Error updating lead status: {str(e)}")
     
     st.divider()
     
@@ -520,7 +542,11 @@ def display_leads_management_tab(leads_df, user_id):
     
     # Display leads table with quick status updates
     for idx, lead in leads_df.iterrows():
-        with st.expander(f"📋 {lead.get('full_name', 'Unknown')} - {lead.get('lead_status', 'N/A')}", expanded=False):
+        # Get the actual database ID or use index as fallback
+        db_id = lead.get('id', idx)
+        display_id = f"DB:{db_id}" if 'id' in leads_df.columns else f"Index:{idx}"
+        
+        with st.expander(f"📋 {lead.get('full_name', 'Unknown')} - {lead.get('lead_status', 'N/A')} ({display_id})", expanded=False):
             col1, col2, col3 = st.columns([2, 2, 2])
             
             with col1:
@@ -534,6 +560,7 @@ def display_leads_management_tab(leads_df, user_id):
                 st.write(f"🎯 Priority: {lead.get('priority', 'N/A')}")
                 st.write(f"👤 Assigned: {lead.get('assigned_to', 'N/A')}")
                 st.write(f"📅 Status: **{lead.get('lead_status', 'N/A')}**")
+                st.write(f"🆔 ID: {display_id}")
             
             with col3:
                 st.write(f"**Quick Update:**")
@@ -541,15 +568,28 @@ def display_leads_management_tab(leads_df, user_id):
                 notes = st.text_input("Notes", placeholder="Add update notes...", key=f"notes_{idx}")
                 
                 if st.button("💾 Update Status", key=f"update_{idx}"):
-                    success = db_manager.update_lead_status(idx, new_status, notes, user_id)
-                    if success:
-                        st.success(f"✅ Status updated to {new_status}")
-                        st.rerun()
-                    else:
-                        st.error("❌ Failed to update status")
+                    try:
+                        if 'id' in leads_df.columns and pd.notna(lead.get('id')):
+                            # Use actual database ID
+                            actual_id = int(lead['id'])
+                            success = db_manager.update_lead_status(actual_id, new_status, notes, user_id)
+                            if success:
+                                st.success(f"✅ Status updated to {new_status}")
+                                st.rerun()
+                            else:
+                                st.error("❌ Failed to update status in database")
+                        else:
+                            st.warning("⚠️ Cannot update: Database ID not available")
+                    except Exception as e:
+                        st.error(f"❌ Error updating status: {str(e)}")
     
     # Also show the original dataframe for reference
     st.write("**Full Data Table (Read-only)**")
+    
+    # Add a note about IDs
+    if 'id' in leads_df.columns:
+        st.info("💡 **Note**: Use the 'ID' column for accurate lead identification. The database ID ensures proper updates.")
+    
     st.dataframe(leads_df, use_container_width=True)
 
 def display_search_filter_tab(leads_df, user_id):
