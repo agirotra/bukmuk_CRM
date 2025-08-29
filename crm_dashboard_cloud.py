@@ -185,6 +185,13 @@ def show_main_app():
         st.write("---")
         st.subheader("💾 Data Management")
         
+        # Add helpful information about data flow
+        if 'data_loaded' in st.session_state and st.session_state.data_loaded:
+            if 'leads_data' in st.session_state and 'id' in st.session_state.leads_data.columns:
+                st.success("✅ **Database Ready**: Your leads have database IDs and can be updated!")
+            else:
+                st.warning("⚠️ **Action Required**: Click '💾 Save Current Data' to enable status updates.")
+        
         if st.button("💾 Save Current Data", help="Manually save current data to database"):
             if 'leads_data' in st.session_state:
                 try:
@@ -192,6 +199,12 @@ def show_main_app():
                     success = db_manager.save_leads_data(st.session_state.leads_data, user_id)
                     if success:
                         st.success("✅ Data saved successfully!")
+                        # Reload data to get database IDs
+                        saved_data = db_manager.load_leads_data(user_id)
+                        if not saved_data.empty:
+                            st.session_state.leads_data = saved_data
+                            st.info("🔄 **Refreshing**: Data reloaded with database IDs. Status updates should now work!")
+                            st.rerun()
                     else:
                         st.error("❌ Failed to save data")
                 except Exception as e:
@@ -265,21 +278,31 @@ def process_uploaded_file(uploaded_file, enable_ai, sales_team):
             leads_df['assigned_to'] = [random.choice(sales_team) for _ in range(len(leads_df))]
         
         progress_bar.progress(90)
-        status_text.text("💾 Finalizing data...")
+        status_text.text("💾 Saving to database...")
         
-        # Store in session state
-        st.session_state.leads_data = leads_df
-        st.session_state.data_loaded = True
-        
-        # Save to database
+        # Save to database FIRST to get database IDs
         user_id = st.session_state.user_info['user_id']
-        db_manager.save_leads_data(leads_df, user_id)
+        save_success = db_manager.save_leads_data(leads_df, user_id)
         
-        progress_bar.progress(100)
-        status_text.text("✅ Data processing complete!")
-        
-        st.success(f"🎉 Successfully processed {len(leads_df)} leads!")
-        st.rerun()
+        if save_success:
+            # Reload data from database to get the database IDs
+            leads_df_with_ids = db_manager.load_leads_data(user_id)
+            
+            if not leads_df_with_ids.empty:
+                # Store in session state with database IDs
+                st.session_state.leads_data = leads_df_with_ids
+                st.session_state.data_loaded = True
+                
+                progress_bar.progress(100)
+                status_text.text("✅ Data processing complete!")
+                
+                st.success(f"🎉 Successfully processed and saved {len(leads_df_with_ids)} leads!")
+                st.info("💡 **Tip**: Your leads are now saved with database IDs and ready for status updates!")
+                st.rerun()
+            else:
+                st.error("❌ Failed to load saved data from database")
+        else:
+            st.error("❌ Failed to save data to database")
         
         # Clean up temp file
         os.unlink(temp_path)
