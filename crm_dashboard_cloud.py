@@ -213,6 +213,15 @@ def show_main_app():
                     st.info("ℹ️ No saved data found")
             except Exception as e:
                 st.error(f"❌ Error loading saved data: {str(e)}")
+        
+        # Reset all data
+        if st.button("🗑️ Reset All Data", help="Clear all loaded data and return to welcome screen", type="secondary"):
+            if 'leads_data' in st.session_state:
+                del st.session_state.leads_data
+            if 'data_loaded' in st.session_state:
+                del st.session_state.data_loaded
+            st.success("✅ All data cleared! Returning to welcome screen.")
+            st.rerun()
     
     # Main content area
     if 'data_loaded' in st.session_state and st.session_state.data_loaded and 'leads_data' in st.session_state:
