@@ -216,37 +216,69 @@ class DatabaseManager:
             with sqlite3.connect(self.db_path) as conn:
                 cursor = conn.cursor()
                 
+                # Debug logging
+                logger.info(f"Attempting to update lead {lead_id} for user {user_id}")
+                logger.info(f"New status: {new_status}, Notes: {notes}")
+                
                 # Get old values for audit log
                 cursor.execute("SELECT * FROM leads WHERE id = ? AND user_id = ?", (lead_id, user_id))
                 old_values = cursor.fetchone()
                 
                 if old_values:
+                    logger.info(f"Found lead {lead_id} with old values: {old_values}")
+                    
                     # Update lead
-                    cursor.execute('''
+                    update_query = '''
                         UPDATE leads 
                         SET lead_status = ?, notes = ?, status_updated_date = ?, updated_at = CURRENT_TIMESTAMP
                         WHERE id = ? AND user_id = ?
-                    ''', (new_status, notes, datetime.now().isoformat(), lead_id, user_id))
+                    '''
+                    update_params = (new_status, notes, datetime.now().isoformat(), lead_id, user_id)
                     
-                    # Log the change
-                    cursor.execute('''
-                        INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
-                        VALUES (?, ?, ?, ?, ?, ?)
-                    ''', (
-                        user_id, 'UPDATE', 'leads', lead_id,
-                        json.dumps(dict(zip([col[0] for col in cursor.description], old_values))),
-                        json.dumps({'lead_status': new_status, 'notes': notes})
-                    ))
+                    logger.info(f"Executing update query: {update_query}")
+                    logger.info(f"Update parameters: {update_params}")
                     
-                    conn.commit()
-                    logger.info(f"Updated lead {lead_id} status to {new_status}")
-                    return True
+                    cursor.execute(update_query, update_params)
+                    
+                    # Check if update was successful
+                    rows_affected = cursor.rowcount
+                    logger.info(f"Rows affected by update: {rows_affected}")
+                    
+                    if rows_affected > 0:
+                        # Log the change
+                        try:
+                            cursor.execute('''
+                                INSERT INTO audit_log (user_id, action, table_name, record_id, old_values, new_values)
+                                VALUES (?, ?, ?, ?, ?, ?)
+                            ''', (
+                                user_id, 'UPDATE', 'leads', lead_id,
+                                json.dumps(dict(zip([col[0] for col in cursor.description], old_values))),
+                                json.dumps({'lead_status': new_status, 'notes': notes})
+                            ))
+                            logger.info("Audit log entry created successfully")
+                        except Exception as audit_error:
+                            logger.warning(f"Failed to create audit log entry: {audit_error}")
+                            # Continue even if audit logging fails
+                        
+                        conn.commit()
+                        logger.info(f"Successfully updated lead {lead_id} status to {new_status}")
+                        return True
+                    else:
+                        logger.warning(f"Update query affected 0 rows for lead {lead_id}")
+                        return False
                 else:
                     logger.warning(f"Lead {lead_id} not found for user {user_id}")
+                    # Let's check what leads exist for this user
+                    cursor.execute("SELECT id, full_name FROM leads WHERE user_id = ? LIMIT 5", (user_id,))
+                    existing_leads = cursor.fetchall()
+                    logger.info(f"Existing leads for user {user_id}: {existing_leads}")
                     return False
                     
         except Exception as e:
             logger.error(f"Error updating lead status: {str(e)}")
+            logger.error(f"Error type: {type(e).__name__}")
+            import traceback
+            logger.error(f"Full traceback: {traceback.format_exc()}")
             return False
     
     def get_leads_by_status(self, status: str, user_id: str) -> pd.DataFrame:

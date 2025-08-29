@@ -532,31 +532,24 @@ def display_leads_management_tab(leads_df, user_id):
         notes = st.text_input("Notes", placeholder="Add status update notes...")
     
     if st.button("Update Status"):
-        try:
-            # Find the actual lead in the DataFrame
-            if 'id' in leads_df.columns:
-                # Use database ID
-                lead_row = leads_df[leads_df['id'] == lead_id]
-                if not lead_row.empty:
-                    success = db_manager.update_lead_status(lead_id, new_status, notes, user_id)
-                    if success:
-                        st.success(f"✅ Lead {lead_id} status updated to {new_status}")
-                        # Refresh data
-                        st.rerun()
-                    else:
-                        st.error("❌ Failed to update lead status in database")
-                else:
-                    st.error(f"❌ Lead ID {lead_id} not found in current data")
+        if lead_id < len(leads_df):
+            # Debug logging
+            st.write(f"🔍 **Debug Info:**")
+            st.write(f"- Lead ID: {lead_id} (type: {type(lead_id)})")
+            st.write(f"- User ID: {user_id} (type: {type(user_id)})")
+            st.write(f"- New Status: {new_status}")
+            st.write(f"- Notes: {notes}")
+            
+            # Update in database
+            success = db_manager.update_lead_status(lead_id, new_status, notes, user_id)
+            if success:
+                st.success(f"✅ Lead {lead_id} status updated to {new_status}")
+                # Refresh data
+                st.rerun()
             else:
-                # Fallback to index-based approach
-                if lead_id < len(leads_df):
-                    st.warning("⚠️ Using index-based update (database ID not available)")
-                    # For now, just show success message since we can't update without DB ID
-                    st.success(f"✅ Status update simulated for lead at index {lead_id}")
-                else:
-                    st.error("❌ Invalid lead ID")
-        except Exception as e:
-            st.error(f"❌ Error updating lead status: {str(e)}")
+                st.error("❌ Failed to update lead status in database")
+        else:
+            st.error("❌ Invalid lead ID")
     
     st.divider()
     
