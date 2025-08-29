@@ -1,0 +1,25 @@
+# Streamlit Cloud Compatible Requirements
+# Simplified version for cloud deployment
+
+# Core dependencies
+streamlit>=1.28.0
+pandas>=2.0.0
+numpy>=1.21.0
+
+# Data processing
+openpyxl>=3.0.0
+python-dateutil>=2.8.0
+
+# AI features
+openai>=1.0.0
+python-dotenv>=1.0.0
+
+# Authentication and security
+streamlit-authenticator>=0.2.0
+cryptography>=3.4.0
+
+# Database
+sqlalchemy>=1.4.0
+
+# Visualization
+plotly>=5.0.0
