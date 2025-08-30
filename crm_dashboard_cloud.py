@@ -448,7 +448,7 @@ def display_dashboard_tab(leads_df, user_id):
         if user_stats.get('status_counts'):
             status_data = pd.DataFrame(list(user_stats['status_counts'].items()), columns=['Status', 'Count'])
             fig = px.pie(status_data, values='Count', names='Status', title="Leads by Status")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             st.info("No status data available")
     
@@ -457,7 +457,7 @@ def display_dashboard_tab(leads_df, user_id):
         if user_stats.get('priority_counts'):
             priority_data = pd.DataFrame(list(user_stats['priority_counts'].items()), columns=['Priority', 'Count'])
             fig = px.bar(priority_data, x='Priority', y='Count', title="Leads by Priority")
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, width='stretch')
         else:
             st.info("No priority data available")
     
@@ -490,7 +490,7 @@ def display_dashboard_tab(leads_df, user_id):
                     available_columns = [col for col in display_columns if col in follow_up_leads.columns]
                     
                     if available_columns:
-                        st.dataframe(follow_up_leads[available_columns], use_container_width=True)
+                        st.dataframe(follow_up_leads[available_columns], width='stretch')
                     else:
                         st.write("Follow-up leads found but no displayable columns available")
                 else:
@@ -729,9 +729,9 @@ def display_leads_management_tab(leads_df, user_id):
     display_df = display_df[available_columns].rename(columns=column_mapping)
     
     # Display the table with selection capability
-    selected_rows = st.dataframe(
+    st.dataframe(
         display_df,
-        use_container_width=True,
+        width='stretch',
         hide_index=True,
         column_config={
             "☑️": st.column_config.CheckboxColumn("Select", help="Select for bulk operations", default=False),
@@ -745,15 +745,6 @@ def display_leads_management_tab(leads_df, user_id):
             "📅 Date": st.column_config.DateColumn("Date", width="small")
         }
     )
-    
-    # Handle selection from the dataframe
-    if selected_rows is not None and 'selected_rows' in selected_rows:
-        # Update our selection state based on the dataframe selection
-        selected_indices = selected_rows['selected_rows']
-        if selected_indices:
-            st.session_state.selected_leads_indices = set(selected_indices)
-        else:
-            st.session_state.selected_leads_indices.clear()
     
     # Show selection summary
     if st.session_state.selected_leads_indices:
@@ -916,7 +907,7 @@ def display_search_filter_tab(leads_df, user_id):
         search_results = db_manager.search_leads(search_term, user_id)
         if not search_results.empty:
             st.success(f"🔍 Found {len(search_results)} matching leads")
-            st.dataframe(search_results, use_container_width=True)
+            st.dataframe(search_results, width='stretch')
         else:
             st.info("No leads found matching your search term")
     
@@ -927,10 +918,10 @@ def display_search_filter_tab(leads_df, user_id):
     if status_filter != "All":
         filtered_df = leads_df[leads_df['lead_status'] == status_filter]
         st.write(f"**Leads with status: {status_filter}**")
-        st.dataframe(filtered_df, use_container_width=True)
+        st.dataframe(filtered_df, width='stretch')
     else:
         st.write("**All Leads**")
-        st.dataframe(leads_df, use_container_width=True)
+        st.dataframe(leads_df, width='stretch')
 
 def display_analytics_tab(leads_df, user_id):
     """Display analytics and insights"""
@@ -947,14 +938,14 @@ def display_analytics_tab(leads_df, user_id):
             if user_stats.get('status_counts'):
                 status_data = pd.DataFrame(list(user_stats['status_counts'].items()), columns=['Status', 'Count'])
                 fig = px.pie(status_data, values='Count', names='Status')
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
         
         with col2:
             st.subheader("🎯 Priority Distribution")
             if user_stats.get('priority_counts'):
                 priority_data = pd.DataFrame(list(user_stats['priority_counts'].items()), columns=['Priority', 'Count'])
                 fig = px.bar(priority_data, x='Priority', y='Count')
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
     
     # Time-based analysis (with safe date handling)
     st.subheader("⏰ Time-based Analysis")
@@ -985,7 +976,7 @@ def display_analytics_tab(leads_df, user_id):
                 # Create the chart
                 fig = px.line(daily_leads_df, x='date', y='count', 
                             title=f"Daily Lead Creation ({found_date_column})")
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, width='stretch')
                 
                 # Show summary stats
                 st.write(f"**Date Range**: {daily_leads_df['date'].min()} to {daily_leads_df['date'].max()}")
