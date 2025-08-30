@@ -611,8 +611,8 @@ def display_leads_management_tab(leads_df, user_id):
     # Prepare table data for display
     display_df = filtered_df.copy()
     
-    # Add selection checkboxes
-    display_df['Select'] = [f"☑️" if idx in selected_leads else "☐" for idx in display_df.index]
+    # Add selection checkboxes as boolean values (not emojis)
+    display_df['Select'] = [True if idx in selected_leads else False for idx in display_df.index]
     
     # Format status with colors
     def format_status(status):
@@ -642,6 +642,27 @@ def display_leads_management_tab(leads_df, user_id):
     # Select columns to display
     columns_to_show = ['Select', 'full_name', 'phone_number', 'email', 'city', 'Status', 'Priority', 'assigned_to', 'lead_date']
     
+    # Check which columns actually exist in the dataframe
+    available_columns = []
+    for col in columns_to_show:
+        if col in display_df.columns:
+            available_columns.append(col)
+        else:
+            # Handle missing columns gracefully
+            if col == 'full_name' and 'name' in display_df.columns:
+                display_df['full_name'] = display_df['name']
+                available_columns.append('full_name')
+            elif col == 'lead_date' and 'date' in display_df.columns:
+                display_df['lead_date'] = display_df['date']
+                available_columns.append('lead_date')
+            elif col in ['Status', 'Priority']:
+                # These are created above, so they should exist
+                available_columns.append(col)
+            else:
+                # Create empty column for missing data
+                display_df[col] = 'N/A'
+                available_columns.append(col)
+    
     # Rename columns for display
     column_mapping = {
         'Select': '☑️',
@@ -655,7 +676,8 @@ def display_leads_management_tab(leads_df, user_id):
         'lead_date': '📅 Date'
     }
     
-    display_df = display_df[columns_to_show].rename(columns=column_mapping)
+    # Only show columns that exist
+    display_df = display_df[available_columns].rename(columns=column_mapping)
     
     # Display the table
     st.dataframe(
@@ -663,7 +685,7 @@ def display_leads_management_tab(leads_df, user_id):
         use_container_width=True,
         hide_index=True,
         column_config={
-            "☑️": st.column_config.CheckboxColumn("Select", help="Select for bulk operations"),
+            "☑️": st.column_config.CheckboxColumn("Select", help="Select for bulk operations", default=False),
             "👤 Name": st.column_config.TextColumn("Name", width="medium"),
             "📱 Phone": st.column_config.TextColumn("Phone", width="medium"),
             "📧 Email": st.column_config.TextColumn("Email", width="medium"),
