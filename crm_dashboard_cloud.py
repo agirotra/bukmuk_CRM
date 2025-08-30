@@ -603,6 +603,45 @@ def display_leads_management_tab(leads_df, user_id):
         if len(st.session_state.selected_leads_indices) == len(filtered_df):
             st.session_state.selected_leads_indices.clear()
     
+    # Show individual checkboxes for first 10 leads (to avoid clutter)
+    if len(filtered_df) <= 10:
+        st.write("**Select individual leads:**")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        cols = [col1, col2, col3, col4, col5]
+        
+        for idx, (_, lead) in enumerate(filtered_df.iterrows()):
+            col_idx = idx % 5
+            with cols[col_idx]:
+                lead_name = lead.get('full_name', f'Lead {idx+1}')
+                if st.checkbox(
+                    f"☑️ {lead_name[:20]}...",
+                    value=idx in st.session_state.selected_leads_indices,
+                    key=f"select_lead_{idx}"
+                ):
+                    st.session_state.selected_leads_indices.add(idx)
+                else:
+                    if idx in st.session_state.selected_leads_indices:
+                        st.session_state.selected_leads_indices.remove(idx)
+    else:
+        st.write(f"**Showing selection for first 10 of {len(filtered_df)} leads**")
+        col1, col2, col3, col4, col5 = st.columns(5)
+        cols = [col1, col2, col3, col4, col5]
+        
+        for idx in range(min(10, len(filtered_df))):
+            col_idx = idx % 5
+            with cols[col_idx]:
+                lead = filtered_df.iloc[idx]
+                lead_name = lead.get('full_name', f'Lead {idx+1}')
+                if st.checkbox(
+                    f"☑️ {lead_name[:20]}...",
+                    value=idx in st.session_state.selected_leads_indices,
+                    key=f"select_lead_{idx}"
+                ):
+                    st.session_state.selected_leads_indices.add(idx)
+                else:
+                    if idx in st.session_state.selected_leads_indices:
+                        st.session_state.selected_leads_indices.remove(idx)
+    
     # Bulk actions
     col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
     
@@ -660,9 +699,6 @@ def display_leads_management_tab(leads_df, user_id):
     # Prepare table data for display
     display_df = filtered_df.copy()
     
-    # Add selection column as boolean values
-    display_df['Select'] = [False] * len(display_df)  # Initialize all as unchecked
-    
     # Format status with colors
     def format_status(status):
         status_colors = {
@@ -688,8 +724,8 @@ def display_leads_management_tab(leads_df, user_id):
     
     display_df['Priority'] = display_df['priority'].apply(format_priority)
     
-    # Select columns to display
-    columns_to_show = ['Select', 'full_name', 'phone_number', 'email', 'city', 'Status', 'Priority', 'assigned_to', 'lead_date']
+    # Remove the Select column since we're using individual checkboxes above
+    columns_to_show = ['full_name', 'phone_number', 'email', 'city', 'Status', 'Priority', 'assigned_to', 'lead_date']
     
     # Check which columns actually exist in the dataframe
     available_columns = []
