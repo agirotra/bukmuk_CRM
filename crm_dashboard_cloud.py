@@ -620,27 +620,8 @@ def display_leads_management_tab(leads_df, user_id):
     # Prepare table data for display
     display_df = filtered_df.copy()
     
-    # Create interactive checkboxes for each row
-    for idx in display_df.index:
-        # Create a unique key for each checkbox
-        checkbox_key = f"select_lead_{idx}"
-        
-        # Check if this lead is currently selected
-        is_selected = idx in st.session_state.selected_leads_indices
-        
-        # Create the checkbox
-        if st.checkbox(
-            f"Select Lead {idx + 1}", 
-            value=is_selected, 
-            key=checkbox_key,
-            label_visibility="collapsed"
-        ):
-            # Add to selection if checked
-            st.session_state.selected_leads_indices.add(idx)
-        else:
-            # Remove from selection if unchecked
-            if idx in st.session_state.selected_leads_indices:
-                st.session_state.selected_leads_indices.remove(idx)
+    # Add selection column as boolean values
+    display_df['Select'] = [False] * len(display_df)  # Initialize all as unchecked
     
     # Format status with colors
     def format_status(status):
@@ -667,8 +648,8 @@ def display_leads_management_tab(leads_df, user_id):
     
     display_df['Priority'] = display_df['priority'].apply(format_priority)
     
-    # Select columns to display (without the Select column since we're using individual checkboxes)
-    columns_to_show = ['full_name', 'phone_number', 'email', 'city', 'Status', 'Priority', 'assigned_to', 'lead_date']
+    # Select columns to display
+    columns_to_show = ['Select', 'full_name', 'phone_number', 'email', 'city', 'Status', 'Priority', 'assigned_to', 'lead_date']
     
     # Check which columns actually exist in the dataframe
     available_columns = []
@@ -683,7 +664,7 @@ def display_leads_management_tab(leads_df, user_id):
             elif col == 'lead_date' and 'date' in display_df.columns:
                 display_df['lead_date'] = display_df['date']
                 available_columns.append('lead_date')
-            elif col in ['Status', 'Priority']:
+            elif col in ['Status', 'Priority', 'Select']:
                 # These are created above, so they should exist
                 available_columns.append(col)
             else:
@@ -693,6 +674,7 @@ def display_leads_management_tab(leads_df, user_id):
     
     # Rename columns for display
     column_mapping = {
+        'Select': '☑️',
         'full_name': '👤 Name',
         'phone_number': '📱 Phone',
         'email': '📧 Email',
@@ -706,12 +688,13 @@ def display_leads_management_tab(leads_df, user_id):
     # Only show columns that exist
     display_df = display_df[available_columns].rename(columns=column_mapping)
     
-    # Display the table
-    st.dataframe(
+    # Display the table with selection capability
+    selected_rows = st.dataframe(
         display_df,
         use_container_width=True,
         hide_index=True,
         column_config={
+            "☑️": st.column_config.CheckboxColumn("Select", help="Select for bulk operations", default=False),
             "👤 Name": st.column_config.TextColumn("Name", width="medium"),
             "📱 Phone": st.column_config.TextColumn("Phone", width="medium"),
             "📧 Email": st.column_config.TextColumn("Email", width="medium"),
@@ -722,6 +705,15 @@ def display_leads_management_tab(leads_df, user_id):
             "📅 Date": st.column_config.DateColumn("Date", width="small")
         }
     )
+    
+    # Handle selection from the dataframe
+    if selected_rows is not None and 'selected_rows' in selected_rows:
+        # Update our selection state based on the dataframe selection
+        selected_indices = selected_rows['selected_rows']
+        if selected_indices:
+            st.session_state.selected_leads_indices = set(selected_indices)
+        else:
+            st.session_state.selected_leads_indices.clear()
     
     # Show selection summary
     if st.session_state.selected_leads_indices:
