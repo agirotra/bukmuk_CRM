@@ -553,13 +553,20 @@ def display_leads_management_tab(leads_df, user_id):
     # ===== BULK OPERATIONS =====
     st.subheader("📋 Bulk Operations")
     
+    # Initialize selection state in session
+    if 'selected_leads_indices' not in st.session_state:
+        st.session_state.selected_leads_indices = set()
+    
     # Checkbox for selecting all visible leads
     select_all = st.checkbox("☑️ Select All Visible Leads", key="select_all_leads")
     
-    # Create selection checkboxes for each lead
-    selected_leads = []
+    # Handle select all functionality
     if select_all:
-        selected_leads = filtered_df.index.tolist()
+        st.session_state.selected_leads_indices = set(filtered_df.index.tolist())
+    else:
+        # If unchecking select all, clear all selections
+        if len(st.session_state.selected_leads_indices) == len(filtered_df):
+            st.session_state.selected_leads_indices.clear()
     
     # Bulk actions
     col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
@@ -575,10 +582,10 @@ def display_leads_management_tab(leads_df, user_id):
     
     with col4:
         if st.button("🚀 Apply Bulk Updates", type="primary"):
-            if selected_leads:
+            if st.session_state.selected_leads_indices:
                 # Apply bulk updates
                 update_count = 0
-                for idx in selected_leads:
+                for idx in st.session_state.selected_leads_indices:
                     lead_id = filtered_df.loc[idx, 'id'] if 'id' in filtered_df.columns else idx
                     success = True
                     
@@ -595,6 +602,8 @@ def display_leads_management_tab(leads_df, user_id):
                 
                 if update_count > 0:
                     st.success(f"✅ Successfully updated {update_count} leads!")
+                    # Clear selections after successful update
+                    st.session_state.selected_leads_indices.clear()
                     st.rerun()
                 else:
                     st.error("❌ Failed to update leads")
@@ -611,8 +620,27 @@ def display_leads_management_tab(leads_df, user_id):
     # Prepare table data for display
     display_df = filtered_df.copy()
     
-    # Add selection checkboxes as boolean values (not emojis)
-    display_df['Select'] = [True if idx in selected_leads else False for idx in display_df.index]
+    # Create interactive checkboxes for each row
+    for idx in display_df.index:
+        # Create a unique key for each checkbox
+        checkbox_key = f"select_lead_{idx}"
+        
+        # Check if this lead is currently selected
+        is_selected = idx in st.session_state.selected_leads_indices
+        
+        # Create the checkbox
+        if st.checkbox(
+            f"Select Lead {idx + 1}", 
+            value=is_selected, 
+            key=checkbox_key,
+            label_visibility="collapsed"
+        ):
+            # Add to selection if checked
+            st.session_state.selected_leads_indices.add(idx)
+        else:
+            # Remove from selection if unchecked
+            if idx in st.session_state.selected_leads_indices:
+                st.session_state.selected_leads_indices.remove(idx)
     
     # Format status with colors
     def format_status(status):
@@ -639,8 +667,8 @@ def display_leads_management_tab(leads_df, user_id):
     
     display_df['Priority'] = display_df['priority'].apply(format_priority)
     
-    # Select columns to display
-    columns_to_show = ['Select', 'full_name', 'phone_number', 'email', 'city', 'Status', 'Priority', 'assigned_to', 'lead_date']
+    # Select columns to display (without the Select column since we're using individual checkboxes)
+    columns_to_show = ['full_name', 'phone_number', 'email', 'city', 'Status', 'Priority', 'assigned_to', 'lead_date']
     
     # Check which columns actually exist in the dataframe
     available_columns = []
@@ -665,7 +693,6 @@ def display_leads_management_tab(leads_df, user_id):
     
     # Rename columns for display
     column_mapping = {
-        'Select': '☑️',
         'full_name': '👤 Name',
         'phone_number': '📱 Phone',
         'email': '📧 Email',
@@ -685,7 +712,6 @@ def display_leads_management_tab(leads_df, user_id):
         use_container_width=True,
         hide_index=True,
         column_config={
-            "☑️": st.column_config.CheckboxColumn("Select", help="Select for bulk operations", default=False),
             "👤 Name": st.column_config.TextColumn("Name", width="medium"),
             "📱 Phone": st.column_config.TextColumn("Phone", width="medium"),
             "📧 Email": st.column_config.TextColumn("Email", width="medium"),
@@ -696,6 +722,10 @@ def display_leads_management_tab(leads_df, user_id):
             "📅 Date": st.column_config.DateColumn("Date", width="small")
         }
     )
+    
+    # Show selection summary
+    if st.session_state.selected_leads_indices:
+        st.info(f"☑️ **{len(st.session_state.selected_leads_indices)} leads selected** for bulk operations")
     
     # ===== INDIVIDUAL LEAD EDITING =====
     st.subheader("✏️ Edit Individual Lead")
