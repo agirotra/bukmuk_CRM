@@ -521,34 +521,69 @@ def display_leads_management_tab(leads_df, user_id):
         search_term = st.text_input("🔍 Search all fields", placeholder="Search by name, phone, email, city...", key="search_leads")
     
     with col2:
-        status_filter = st.selectbox("📊 Status", ["All"] + list(leads_df['lead_status'].unique()), key="status_filter")
+        # Safe status filter
+        if 'lead_status' in leads_df.columns and not leads_df['lead_status'].empty:
+            status_options = ["All"] + [str(s) for s in leads_df['lead_status'].dropna().unique() if pd.notna(s)]
+        else:
+            status_options = ["All"]
+        status_filter = st.selectbox("📊 Status", status_options, key="status_filter")
     
     with col3:
-        priority_filter = st.selectbox("🎯 Priority", ["All"] + list(leads_df['priority'].unique()), key="priority_filter")
+        # Safe priority filter
+        if 'priority' in leads_df.columns and not leads_df['priority'].empty:
+            priority_options = ["All"] + [str(p) for p in leads_df['priority'].dropna().unique() if pd.notna(p)]
+        else:
+            priority_options = ["All"]
+        priority_filter = st.selectbox("🎯 Priority", priority_options, key="priority_filter")
     
     with col4:
-        assigned_filter = st.selectbox("👤 Assigned To", ["All"] + list(leads_df['assigned_to'].dropna().unique()), key="assigned_filter")
+        # Safe assigned filter
+        if 'assigned_to' in leads_df.columns and not leads_df['assigned_to'].empty:
+            assigned_options = ["All"] + [str(a) for a in leads_df['assigned_to'].dropna().unique() if pd.notna(a)]
+        else:
+            assigned_options = ["All"]
+        assigned_filter = st.selectbox("👤 Assigned To", assigned_options, key="assigned_filter")
     
     # ===== APPLY FILTERS =====
     filtered_df = leads_df.copy()
     
     if search_term:
-        mask = (
-            filtered_df['full_name'].str.contains(search_term, case=False, na=False) |
-            filtered_df['phone_number'].str.contains(search_term, case=False, na=False) |
-            filtered_df['email'].str.contains(search_term, case=False, na=False) |
-            filtered_df['city'].str.contains(search_term, case=False, na=False)
-        )
-        filtered_df = filtered_df[mask]
+        # Safe search with proper data type handling
+        search_mask = pd.Series([False] * len(filtered_df), index=filtered_df.index)
+        
+        # Search in full_name
+        if 'full_name' in filtered_df.columns:
+            name_col = filtered_df['full_name'].astype(str)
+            search_mask |= name_col.str.contains(search_term, case=False, na=False)
+        
+        # Search in phone_number
+        if 'phone_number' in filtered_df.columns:
+            phone_col = filtered_df['phone_number'].astype(str)
+            search_mask |= phone_col.str.contains(search_term, case=False, na=False)
+        
+        # Search in email
+        if 'email' in filtered_df.columns:
+            email_col = filtered_df['email'].astype(str)
+            search_mask |= email_col.str.contains(search_term, case=False, na=False)
+        
+        # Search in city
+        if 'city' in filtered_df.columns:
+            city_col = filtered_df['city'].astype(str)
+            search_mask |= city_col.str.contains(search_term, case=False, na=False)
+        
+        filtered_df = filtered_df[search_mask]
     
     if status_filter != "All":
-        filtered_df = filtered_df[filtered_df['lead_status'] == status_filter]
+        if 'lead_status' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['lead_status'] == status_filter]
     
     if priority_filter != "All":
-        filtered_df = filtered_df[filtered_df['priority'] == priority_filter]
+        if 'priority' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['priority'] == priority_filter]
     
     if assigned_filter != "All":
-        filtered_df = filtered_df[filtered_df['assigned_to'] == assigned_filter]
+        if 'assigned_to' in filtered_df.columns:
+            filtered_df = filtered_df[filtered_df['assigned_to'] == assigned_filter]
     
     # ===== BULK OPERATIONS =====
     st.subheader("📋 Bulk Operations")
@@ -578,7 +613,12 @@ def display_leads_management_tab(leads_df, user_id):
         bulk_priority = st.selectbox("🎯 Bulk Priority Update", ["Select Priority", "High", "Medium", "Low"], key="bulk_priority")
     
     with col3:
-        bulk_assigned = st.selectbox("👤 Bulk Assignment", ["Select Person"] + list(leads_df['assigned_to'].dropna().unique()), key="bulk_assigned")
+        # Safe bulk assignment
+        if 'assigned_to' in leads_df.columns and not leads_df['assigned_to'].empty:
+            assigned_options = ["Select Person"] + [str(a) for a in leads_df['assigned_to'].dropna().unique() if pd.notna(a)]
+        else:
+            assigned_options = ["Select Person"]
+        bulk_assigned = st.selectbox("👤 Bulk Assignment", assigned_options, key="bulk_assigned")
     
     with col4:
         if st.button("🚀 Apply Bulk Updates", type="primary"):
