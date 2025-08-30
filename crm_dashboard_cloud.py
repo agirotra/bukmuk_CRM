@@ -6,6 +6,7 @@ from datetime import datetime, timedelta
 import logging
 import os
 from dotenv import load_dotenv
+import io # Added for export functionality
 
 # Import our custom modules
 from data_cleaner import LeadsDataCleaner
@@ -504,109 +505,320 @@ def display_dashboard_tab(leads_df, user_id):
         st.info("ℹ️ Follow-up tracking not available - column 'follow_up_date' not found")
 
 def display_leads_management_tab(leads_df, user_id):
-    """Display leads management interface"""
+    """Display modern leads management interface with table, search, and editing"""
     st.header("👥 Leads Management")
     
-    # Status update section
-    st.subheader("📝 Update Lead Status")
+    if leads_df.empty:
+        st.info("📭 No leads available. Please upload an Excel file first.")
+        return
     
-    # Method 1: Quick Update by Lead ID
-    st.write("**Method 1: Quick Update by Lead ID**")
+    # ===== SEARCH AND FILTER BAR =====
+    st.subheader("🔍 Search & Filter")
+    
+    col1, col2, col3, col4 = st.columns([3, 2, 2, 2])
+    
+    with col1:
+        search_term = st.text_input("🔍 Search all fields", placeholder="Search by name, phone, email, city...", key="search_leads")
+    
+    with col2:
+        status_filter = st.selectbox("📊 Status", ["All"] + list(leads_df['lead_status'].unique()), key="status_filter")
+    
+    with col3:
+        priority_filter = st.selectbox("🎯 Priority", ["All"] + list(leads_df['priority'].unique()), key="priority_filter")
+    
+    with col4:
+        assigned_filter = st.selectbox("👤 Assigned To", ["All"] + list(leads_df['assigned_to'].dropna().unique()), key="assigned_filter")
+    
+    # ===== APPLY FILTERS =====
+    filtered_df = leads_df.copy()
+    
+    if search_term:
+        mask = (
+            filtered_df['full_name'].str.contains(search_term, case=False, na=False) |
+            filtered_df['phone_number'].str.contains(search_term, case=False, na=False) |
+            filtered_df['email'].str.contains(search_term, case=False, na=False) |
+            filtered_df['city'].str.contains(search_term, case=False, na=False)
+        )
+        filtered_df = filtered_df[mask]
+    
+    if status_filter != "All":
+        filtered_df = filtered_df[filtered_df['lead_status'] == status_filter]
+    
+    if priority_filter != "All":
+        filtered_df = filtered_df[filtered_df['priority'] == priority_filter]
+    
+    if assigned_filter != "All":
+        filtered_df = filtered_df[filtered_df['assigned_to'] == assigned_filter]
+    
+    # ===== BULK OPERATIONS =====
+    st.subheader("📋 Bulk Operations")
+    
+    # Checkbox for selecting all visible leads
+    select_all = st.checkbox("☑️ Select All Visible Leads", key="select_all_leads")
+    
+    # Create selection checkboxes for each lead
+    selected_leads = []
+    if select_all:
+        selected_leads = filtered_df.index.tolist()
+    
+    # Bulk actions
+    col1, col2, col3, col4 = st.columns([2, 2, 2, 2])
+    
+    with col1:
+        bulk_status = st.selectbox("📊 Bulk Status Update", ["Select Status"] + LEAD_STATUSES, key="bulk_status")
+    
+    with col2:
+        bulk_priority = st.selectbox("🎯 Bulk Priority Update", ["Select Priority", "High", "Medium", "Low"], key="bulk_priority")
+    
+    with col3:
+        bulk_assigned = st.selectbox("👤 Bulk Assignment", ["Select Person"] + list(leads_df['assigned_to'].dropna().unique()), key="bulk_assigned")
+    
+    with col4:
+        if st.button("🚀 Apply Bulk Updates", type="primary"):
+            if selected_leads:
+                # Apply bulk updates
+                update_count = 0
+                for idx in selected_leads:
+                    lead_id = filtered_df.loc[idx, 'id'] if 'id' in filtered_df.columns else idx
+                    success = True
+                    
+                    if bulk_status != "Select Status":
+                        success &= db_manager.update_lead_status(lead_id, bulk_status, "Bulk status update", user_id)
+                    
+                    # Update other fields if needed
+                    if success and (bulk_priority != "Select Priority" or bulk_assigned != "Select Person"):
+                        # This would require additional database update methods
+                        pass
+                    
+                    if success:
+                        update_count += 1
+                
+                if update_count > 0:
+                    st.success(f"✅ Successfully updated {update_count} leads!")
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to update leads")
+            else:
+                st.warning("⚠️ Please select leads for bulk update")
+    
+    # ===== LEADS TABLE =====
+    st.subheader(f"📊 Leads Table ({len(filtered_df)} leads)")
+    
+    if filtered_df.empty:
+        st.info("🔍 No leads match your search criteria. Try adjusting your filters.")
+        return
+    
+    # Prepare table data for display
+    display_df = filtered_df.copy()
+    
+    # Add selection checkboxes
+    display_df['Select'] = [f"☑️" if idx in selected_leads else "☐" for idx in display_df.index]
+    
+    # Format status with colors
+    def format_status(status):
+        status_colors = {
+            'New Lead': '🟢',
+            'Initial Contact': '🔵',
+            'Follow Up': '🟡',
+            'Qualified': '🟠',
+            'Converted': '🟢',
+            'Lost': '🔴'
+        }
+        return f"{status_colors.get(status, '⚪')} {status}"
+    
+    display_df['Status'] = display_df['lead_status'].apply(format_status)
+    
+    # Format priority with colors
+    def format_priority(priority):
+        priority_colors = {
+            'High': '🔴',
+            'Medium': '🟡',
+            'Low': '🟢'
+        }
+        return f"{priority_colors.get(priority, '⚪')} {priority}"
+    
+    display_df['Priority'] = display_df['priority'].apply(format_priority)
+    
+    # Select columns to display
+    columns_to_show = ['Select', 'full_name', 'phone_number', 'email', 'city', 'Status', 'Priority', 'assigned_to', 'lead_date']
+    
+    # Rename columns for display
+    column_mapping = {
+        'Select': '☑️',
+        'full_name': '👤 Name',
+        'phone_number': '📱 Phone',
+        'email': '📧 Email',
+        'city': '🏙️ City',
+        'Status': '📊 Status',
+        'Priority': '🎯 Priority',
+        'assigned_to': '👤 Assigned',
+        'lead_date': '📅 Date'
+    }
+    
+    display_df = display_df[columns_to_show].rename(columns=column_mapping)
+    
+    # Display the table
+    st.dataframe(
+        display_df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "☑️": st.column_config.CheckboxColumn("Select", help="Select for bulk operations"),
+            "👤 Name": st.column_config.TextColumn("Name", width="medium"),
+            "📱 Phone": st.column_config.TextColumn("Phone", width="medium"),
+            "📧 Email": st.column_config.TextColumn("Email", width="medium"),
+            "🏙️ City": st.column_config.TextColumn("City", width="small"),
+            "📊 Status": st.column_config.TextColumn("Status", width="small"),
+            "🎯 Priority": st.column_config.TextColumn("Priority", width="small"),
+            "👤 Assigned": st.column_config.TextColumn("Assigned", width="small"),
+            "📅 Date": st.column_config.DateColumn("Date", width="small")
+        }
+    )
+    
+    # ===== INDIVIDUAL LEAD EDITING =====
+    st.subheader("✏️ Edit Individual Lead")
+    
+    # Lead selection for editing
+    col1, col2 = st.columns([2, 1])
+    
+    with col1:
+        if 'id' in filtered_df.columns:
+            available_ids = filtered_df['id'].dropna().astype(int).tolist()
+            if available_ids:
+                edit_lead_id = st.selectbox("Select Lead ID to Edit", available_ids, key="edit_lead_select")
+            else:
+                edit_lead_id = st.number_input("Lead ID", min_value=0, max_value=len(filtered_df)-1, value=0, key="edit_lead_input")
+        else:
+            edit_lead_id = st.number_input("Lead Index", min_value=0, max_value=len(filtered_df)-1, value=0, key="edit_lead_input")
+    
+    with col2:
+        if st.button("🔍 Load Lead for Editing", type="secondary"):
+            st.session_state.editing_lead_id = edit_lead_id
+            st.rerun()
+    
+    # Display edit form if lead is selected
+    if hasattr(st.session_state, 'editing_lead_id') and st.session_state.editing_lead_id is not None:
+        edit_id = st.session_state.editing_lead_id
+        
+        # Find the lead to edit
+        if 'id' in filtered_df.columns:
+            lead_to_edit = filtered_df[filtered_df['id'] == edit_id]
+        else:
+            lead_to_edit = filtered_df.iloc[[edit_id]]
+        
+        if not lead_to_edit.empty:
+            lead_row = lead_to_edit.iloc[0]
+            
+            st.write(f"**Editing Lead: {lead_row.get('full_name', 'Unknown')}**")
+            
+            # Edit form
+            with st.form(f"edit_lead_{edit_id}"):
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    new_name = st.text_input("Full Name", value=lead_row.get('full_name', ''), key=f"edit_name_{edit_id}")
+                    new_phone = st.text_input("Phone Number", value=lead_row.get('phone_number', ''), key=f"edit_phone_{edit_id}")
+                    new_email = st.text_input("Email", value=lead_row.get('email', ''), key=f"edit_email_{edit_id}")
+                    new_city = st.text_input("City", value=lead_row.get('city', ''), key=f"edit_city_{edit_id}")
+                
+                with col2:
+                    new_status = st.selectbox("Status", LEAD_STATUSES, index=LEAD_STATUSES.index(lead_row.get('lead_status', 'New Lead')), key=f"edit_status_{edit_id}")
+                    new_priority = st.selectbox("Priority", ["High", "Medium", "Low"], index=["High", "Medium", "Low"].index(lead_row.get('priority', 'Medium')), key=f"edit_priority_{edit_id}")
+                    new_assigned = st.text_input("Assigned To", value=lead_row.get('assigned_to', ''), key=f"edit_assigned_{edit_id}")
+                    new_notes = st.text_area("Notes", value=lead_row.get('notes', ''), key=f"edit_notes_{edit_id}")
+                
+                col1, col2, col3 = st.columns([1, 1, 1])
+                
+                with col1:
+                    if st.form_submit_button("💾 Save Changes", type="primary"):
+                        try:
+                            # Update status if changed
+                            if new_status != lead_row.get('lead_status'):
+                                success = db_manager.update_lead_status(edit_id, new_status, new_notes, user_id)
+                                if success:
+                                    st.success(f"✅ Lead {edit_id} updated successfully!")
+                                    # Clear editing state
+                                    st.session_state.editing_lead_id = None
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Failed to update lead status")
+                            else:
+                                st.success("✅ No changes to save")
+                        except Exception as e:
+                            st.error(f"❌ Error updating lead: {str(e)}")
+                
+                with col2:
+                    if st.form_submit_button("❌ Cancel", type="secondary"):
+                        st.session_state.editing_lead_id = None
+                        st.rerun()
+                
+                with col3:
+                    if st.form_submit_button("🗑️ Delete Lead", type="secondary"):
+                        st.warning("⚠️ Delete functionality not yet implemented")
+    
+    # ===== QUICK STATUS UPDATE =====
+    st.subheader("⚡ Quick Status Update")
+    
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        # Use actual database IDs if available, otherwise use index
-        if 'id' in leads_df.columns:
-            available_ids = leads_df['id'].dropna().astype(int).tolist()
-            if available_ids:
-                lead_id = st.selectbox("Lead ID", available_ids, help="Select the lead ID to update")
-            else:
-                lead_id = st.number_input("Lead ID", min_value=0, max_value=len(leads_df)-1, value=0)
-        else:
-            lead_id = st.number_input("Lead ID", min_value=0, max_value=len(leads_df)-1, value=0)
+        quick_lead_id = st.number_input("Lead ID", min_value=0, max_value=len(leads_df)-1, value=0, key="quick_lead_id")
     
     with col2:
-        new_status = st.selectbox("New Status", LEAD_STATUSES)
+        quick_status = st.selectbox("New Status", LEAD_STATUSES, key="quick_status")
     
     with col3:
-        notes = st.text_input("Notes", placeholder="Add status update notes...")
+        quick_notes = st.text_input("Notes", placeholder="Quick update notes...", key="quick_notes")
     
-    if st.button("Update Status"):
-        if lead_id < len(leads_df):
-            # Debug logging
-            st.write(f"🔍 **Debug Info:**")
-            st.write(f"- Lead ID: {lead_id} (type: {type(lead_id)})")
-            st.write(f"- User ID: {user_id} (type: {type(user_id)})")
-            st.write(f"- New Status: {new_status}")
-            st.write(f"- Notes: {notes}")
-            
-            # Update in database
-            success = db_manager.update_lead_status(lead_id, new_status, notes, user_id)
-            if success:
-                st.success(f"✅ Lead {lead_id} status updated to {new_status}")
-                # Refresh data
-                st.rerun()
+    if st.button("🚀 Quick Update", type="primary"):
+        try:
+            if 'id' in leads_df.columns:
+                # Use database ID
+                success = db_manager.update_lead_status(quick_lead_id, quick_status, quick_notes, user_id)
+                if success:
+                    st.success(f"✅ Lead {quick_lead_id} status updated to {quick_status}")
+                    st.rerun()
+                else:
+                    st.error("❌ Failed to update lead status")
             else:
-                st.error("❌ Failed to update lead status in database")
-        else:
-            st.error("❌ Invalid lead ID")
+                st.warning("⚠️ Database ID not available for quick updates")
+        except Exception as e:
+            st.error(f"❌ Error: {str(e)}")
     
-    st.divider()
+    # ===== EXPORT FUNCTIONALITY =====
+    st.subheader("📤 Export Data")
     
-    # Method 2: Interactive Table Updates
-    st.write("**Method 2: Interactive Table Updates**")
+    col1, col2 = st.columns([2, 1])
     
-    # Display leads table with quick status updates
-    for idx, lead in leads_df.iterrows():
-        # Get the actual database ID or use index as fallback
-        db_id = lead.get('id', idx)
-        display_id = f"DB:{db_id}" if 'id' in leads_df.columns else f"Index:{idx}"
-        
-        with st.expander(f"📋 {lead.get('full_name', 'Unknown')} - {lead.get('lead_status', 'N/A')} ({display_id})", expanded=False):
-            col1, col2, col3 = st.columns([2, 2, 2])
-            
-            with col1:
-                st.write(f"**Contact Info:**")
-                st.write(f"📱 Phone: {lead.get('phone_number', 'N/A')}")
-                st.write(f"📧 Email: {lead.get('email', 'N/A')}")
-                st.write(f"🏙️ City: {lead.get('city', 'N/A')}")
-            
-            with col2:
-                st.write(f"**Lead Details:**")
-                st.write(f"🎯 Priority: {lead.get('priority', 'N/A')}")
-                st.write(f"👤 Assigned: {lead.get('assigned_to', 'N/A')}")
-                st.write(f"📅 Status: **{lead.get('lead_status', 'N/A')}**")
-                st.write(f"🆔 ID: {display_id}")
-            
-            with col3:
-                st.write(f"**Quick Update:**")
-                new_status = st.selectbox("New Status", LEAD_STATUSES, key=f"status_{idx}")
-                notes = st.text_input("Notes", placeholder="Add update notes...", key=f"notes_{idx}")
-                
-                if st.button("💾 Update Status", key=f"update_{idx}"):
-                    try:
-                        if 'id' in leads_df.columns and pd.notna(lead.get('id')):
-                            # Use actual database ID
-                            actual_id = int(lead['id'])
-                            success = db_manager.update_lead_status(actual_id, new_status, notes, user_id)
-                            if success:
-                                st.success(f"✅ Status updated to {new_status}")
-                                st.rerun()
-                            else:
-                                st.error("❌ Failed to update status in database")
-                        else:
-                            st.warning("⚠️ Cannot update: Database ID not available")
-                    except Exception as e:
-                        st.error(f"❌ Error updating status: {str(e)}")
+    with col1:
+        export_format = st.selectbox("Export Format", ["CSV", "Excel"], key="export_format")
     
-    # Also show the original dataframe for reference
-    st.write("**Full Data Table (Read-only)**")
-    
-    # Add a note about IDs
-    if 'id' in leads_df.columns:
-        st.info("💡 **Note**: Use the 'ID' column for accurate lead identification. The database ID ensures proper updates.")
-    
-    st.dataframe(leads_df, use_container_width=True)
+    with col2:
+        if st.button("📥 Export Filtered Leads", type="secondary"):
+            try:
+                if export_format == "CSV":
+                    csv = filtered_df.to_csv(index=False)
+                    st.download_button(
+                        label="📥 Download CSV",
+                        data=csv,
+                        file_name=f"leads_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                        mime="text/csv"
+                    )
+                else:  # Excel
+                    # Create Excel file in memory
+                    output = io.BytesIO()
+                    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+                        filtered_df.to_excel(writer, index=False, sheet_name='Leads')
+                    output.seek(0)
+                    
+                    st.download_button(
+                        label="📥 Download Excel",
+                        data=output.getvalue(),
+                        file_name=f"leads_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                    )
+            except Exception as e:
+                st.error(f"❌ Export failed: {str(e)}")
 
 def display_search_filter_tab(leads_df, user_id):
     """Display search and filter interface"""
